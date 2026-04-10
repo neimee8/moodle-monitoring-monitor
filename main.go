@@ -1,3 +1,4 @@
+// Package main runs the Moodle monitoring loop.
 package main
 
 import (
@@ -25,9 +26,14 @@ import (
 	"time"
 )
 
-const buildSnapshotsTimingEvent = "snapshot building"
-const buildSnapshotsTimingStage = ""
-const snapshotProcessingTimingEvent = "snapshot processing"
+const (
+	// buildSnapshotsTimingEvent groups timing entries for snapshot building.
+	buildSnapshotsTimingEvent = "snapshot building"
+	// buildSnapshotsTimingStage is the default stage label for snapshot building.
+	buildSnapshotsTimingStage = ""
+	// snapshotProcessingTimingEvent groups timing entries for snapshot processing.
+	snapshotProcessingTimingEvent = "snapshot processing"
+)
 
 var cfg = config.Load()
 var stg *settings.Settings
@@ -44,6 +50,7 @@ var stopping atomic.Bool
 var lastLoggedOutMsg = time.Date(1970, time.January, 0, 0, 0, 0, 0, time.Local)
 var lastTimedOutSessions = sessions.Sessions{}
 
+// initialize wires the shared services used by the monitoring loop.
 func initialize() {
 	interruptRequestCallback := func() bool {
 		return stopping.Load()
@@ -89,6 +96,7 @@ func initialize() {
 	initialized = true
 }
 
+// main initializes the monitor and runs the polling cycle until shutdown.
 func main() {
 	defer func() {
 		fmt.Print(cfg.Sep)
@@ -186,6 +194,7 @@ func main() {
 			}
 
 			func() {
+				// Keep stage identifiers unique so per-snapshot timing entries stay distinct.
 				snapshotProcessingStage++
 				timing.Start(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
 
@@ -291,6 +300,7 @@ func main() {
 
 				activities := parsing.Activities{}
 
+				// Continue the same timing sequence for per-course summary processing.
 				snapshotProcessingStage++
 				timing.Start(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
 

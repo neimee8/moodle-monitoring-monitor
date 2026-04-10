@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+// SessionManager rotates through Moodle sessions and tracks timed-out ones.
 type SessionManager struct {
 	mu               sync.Mutex
 	sessions         Sessions
@@ -14,6 +15,7 @@ type SessionManager struct {
 	lastUsedIdIndex  int
 }
 
+// NewSessionManager returns a session manager built from the configured Moodle sessions.
 func NewSessionManager(stg *settings.Settings) *SessionManager {
 	sessions := make(Sessions, 0, len(stg.MoodleSessions))
 
@@ -30,6 +32,7 @@ func NewSessionManager(stg *settings.Settings) *SessionManager {
 	}
 }
 
+// GetSession returns the next available session in round-robin order.
 func (s *SessionManager) GetSession() (Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -42,6 +45,7 @@ func (s *SessionManager) GetSession() (Session, error) {
 
 	idx := s.lastUsedIdIndex
 
+	// Advance until a non-timed-out session is found.
 	for true {
 		if s.lastUsedIdIndex == len(s.sessions)-1 {
 			s.lastUsedIdIndex = 0
@@ -59,10 +63,12 @@ func (s *SessionManager) GetSession() (Session, error) {
 	return session, nil
 }
 
+// GetTimedOutSessions returns the sessions marked as timed out.
 func (s *SessionManager) GetTimedOutSessions() Sessions {
 	return Sessions(s.timedOutSessions.ToSlice())
 }
 
+// TimedOut marks a session as timed out after confirming that it belongs to the manager.
 func (s *SessionManager) TimedOut(session Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -5,13 +5,16 @@ import (
 	"monitor/internal/utils"
 )
 
+// Session stores a Moodle session identifier and cookie value.
 type Session struct {
 	Id    string
 	Value string
 }
 
+// Sessions is a list of Moodle sessions.
 type Sessions []Session
 
+// Repr returns a plain-text representation of the session.
 func (s Session) Repr() string {
 	return fmt.Sprintf(
 		"%s: %s\n",
@@ -20,6 +23,7 @@ func (s Session) Repr() string {
 	)
 }
 
+// Repr returns a plain-text representation of all sessions.
 func (s Sessions) Repr() string {
 	repr := ""
 
@@ -30,6 +34,7 @@ func (s Sessions) Repr() string {
 	return repr
 }
 
+// Diff returns sessions added in b and removed from a.
 func (a Sessions) Diff(b Sessions) (added, removed Sessions) {
 	return utils.SliceDiffComparable(a, b)
 }

@@ -16,8 +16,10 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// SnapshotType identifies the kind of page snapshot that was built.
 type SnapshotType string
 
+// Snapshot contains the result of a single page snapshot build.
 type Snapshot struct {
 	TimeBuildingStarted time.Time
 	RequestDuration     time.Duration
@@ -34,13 +36,23 @@ type Snapshot struct {
 	Doc              *goquery.Document
 }
 
-const CourseSnapshot = SnapshotType("course")
-const SectionSnapshot = SnapshotType("section")
+const (
+	// CourseSnapshot marks a snapshot built from a course page.
+	CourseSnapshot = SnapshotType("course")
+	// SectionSnapshot marks a snapshot built from a section page.
+	SectionSnapshot = SnapshotType("section")
+)
 
-const buildTimingEvent = "build"
-const buildTimingStage = ""
-const requestTimingEvent = "request"
+const (
+	// buildTimingEvent groups timing entries for the full snapshot build.
+	buildTimingEvent = "build"
+	// buildTimingStage is the default stage label for snapshot building.
+	buildTimingStage = ""
+	// requestTimingEvent groups timing entries for HTTP requests within a build.
+	requestTimingEvent = "request"
+)
 
+// BuildSnapshots builds a snapshot for the given page and recursively schedules section snapshots for course pages.
 func BuildSnapshots(
 	cfg *config.Config,
 	sessionManager *sessions.SessionManager,
@@ -65,9 +77,11 @@ func BuildSnapshots(
 		snapshot := Snapshot{
 			TimeBuildingStarted: time.Now().Local(),
 
-			Course:           course,
-			Type:             snapshotType,
-			Url:              url,
+			Course: course,
+			Type:   snapshotType,
+			Url:    url,
+
+			// The counter is incremented before each attempt, so start at -1 to report zero timeouts on the first try.
 			TimedOutSessions: -1,
 		}
 
@@ -145,6 +159,7 @@ func BuildSnapshots(
 		snapshot.Doc = doc
 
 		if snapshot.Type == CourseSnapshot {
+			// Course pages fan out into section snapshots after the main page is parsed.
 			links := parser.ExtractSectionLinks(snapshot.Doc)
 
 			for _, link := range links {

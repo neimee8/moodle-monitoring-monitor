@@ -2,6 +2,7 @@ package config
 
 import "os"
 
+// Config stores static configuration values used across the monitor.
 type Config struct {
 	SendMsgApiEndpoint     string
 	GetSettingsApiEndpoint string
@@ -36,6 +37,7 @@ type Config struct {
 	StatePathTmp string
 }
 
+// Load returns the default application configuration.
 func Load() *Config {
 	return &Config{
 		SendMsgApiEndpoint:     "http://localhost:8001/api/bot/send",

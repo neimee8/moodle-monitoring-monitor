@@ -6,14 +6,17 @@ import (
 	"monitor/internal/config"
 	"monitor/internal/requests"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
+// Sender sends notifications through the messaging API.
 type Sender struct {
 	cfg *config.Config
 	req *requests.Request
 }
 
+// NewSender returns a sender configured for the notification endpoint.
 func NewSender(cfg *config.Config, interruptRequestCallback func() bool) *Sender {
 	req := requests.NewRequest(cfg)
 	req.Url = cfg.SendMsgApiEndpoint
@@ -27,6 +30,7 @@ func NewSender(cfg *config.Config, interruptRequestCallback func() bool) *Sender
 	}
 }
 
+// Do sends a message and optionally targets admin recipients only.
 func (s Sender) Do(text string, admin bool) error {
 	text = strings.TrimSpace(text)
 	adminStr := "0"
@@ -59,13 +63,13 @@ func (s Sender) Do(text string, admin bool) error {
 	if resp.StatusCode != http.StatusOK {
 		panic(fmt.Sprintf(
 			"send message error: bad response code: %s. response: %s",
-			string(resp.StatusCode),
+			strconv.Itoa(resp.StatusCode),
 			resp.Body,
 		))
 	}
 
 	var respBody map[string]string
-	err = json.Unmarshal([]byte(resp.Body), respBody)
+	err = json.Unmarshal(resp.Body, &respBody)
 
 	if err != nil {
 		panic("send message error: response body unmarshal error: " + err.Error())

@@ -6,6 +6,7 @@ import (
 	"unicode"
 )
 
+// AtomicWrite writes data to a temporary file and renames it into place.
 func AtomicWrite(
 	path, tmpPath string,
 	data []byte,
@@ -20,6 +21,7 @@ func AtomicWrite(
 	return os.Rename(tmpPath, path)
 }
 
+// Capitalize uppercases the first rune of a string.
 func Capitalize(s string) string {
 	if s == "" {
 		return s
@@ -31,6 +33,7 @@ func Capitalize(s string) string {
 	return string(r)
 }
 
+// SliceDiffComparable returns values added in b and removed from a.
 func SliceDiffComparable[T comparable](a, b []T) (added, removed []T) {
 	aSet := types.NewSet(a...)
 	bSet := types.NewSet(b...)

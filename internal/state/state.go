@@ -9,10 +9,12 @@ import (
 	"os"
 )
 
+// State stores the persisted monitoring data.
 type State struct {
 	Storage Storage
 }
 
+// Load loads persisted state from disk or returns an empty state when none exists.
 func Load(cfg *config.Config) *State {
 	if _, err := os.Stat(cfg.StatePath); err != nil {
 		if os.IsNotExist(err) {
@@ -44,6 +46,7 @@ func Load(cfg *config.Config) *State {
 	return &state
 }
 
+// Save encodes the state and writes it to disk atomically.
 func (s State) Save(cfg *config.Config) error {
 	var buf bytes.Buffer
 

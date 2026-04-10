@@ -10,6 +10,7 @@ import (
 
 var req *requests.Request
 
+// Settings describes the runtime settings consumed by the monitor.
 type Settings struct {
 	AllowedTelegramChatIds             []string          `json:"allowed_telegram_chat_ids"`
 	AdminTelegramChatIds               []string          `json:"admin_telegram_chat_ids"`
@@ -21,11 +22,13 @@ type Settings struct {
 	WebsettingsLogLineCount            uint              `json:"websettings_log_line_count"`
 }
 
+// response mirrors the settings API response envelope.
 type response struct {
 	Msg  string   `json:"msg"`
 	Data Settings `json:"data"`
 }
 
+// initialize prepares the shared request used to fetch settings.
 func initialize(cfg *config.Config) {
 	if req == nil {
 		req = requests.NewRequest(cfg)
@@ -33,6 +36,7 @@ func initialize(cfg *config.Config) {
 	}
 }
 
+// Load fetches the current monitor settings from the settings API.
 func Load(cfg *config.Config) *Settings {
 	initialize(cfg)
 

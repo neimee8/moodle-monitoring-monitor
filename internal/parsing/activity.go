@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// Activity describes a single Moodle course activity.
 type Activity struct {
 	Id    string
 	Type  string
@@ -13,8 +14,10 @@ type Activity struct {
 	Link  string
 }
 
+// Activities is a list of Moodle course activities.
 type Activities []Activity
 
+// Repr returns a plain-text representation of the activity.
 func (a Activity) Repr() string {
 	return fmt.Sprintf(
 		"%s %s: %s\n%s",
@@ -25,6 +28,7 @@ func (a Activity) Repr() string {
 	)
 }
 
+// ReprHtml returns an HTML-formatted representation of the activity.
 func (a Activity) ReprHtml() string {
 	return fmt.Sprintf(
 		"<code>%s</code> %s: %s\n%s",
@@ -35,6 +39,7 @@ func (a Activity) ReprHtml() string {
 	)
 }
 
+// Repr returns a plain-text representation of all activities.
 func (a Activities) Repr() string {
 	repr := ""
 
@@ -45,6 +50,7 @@ func (a Activities) Repr() string {
 	return repr
 }
 
+// ReprHtml returns an HTML-formatted representation of all activities.
 func (a Activities) ReprHtml() string {
 	repr := ""
 
@@ -55,6 +61,7 @@ func (a Activities) ReprHtml() string {
 	return repr
 }
 
+// Diff returns activities added in b and removed from a.
 func (a Activities) Diff(b Activities) (added, removed Activities) {
 	return utils.SliceDiffComparable(a, b)
 }

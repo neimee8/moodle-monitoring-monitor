@@ -6,22 +6,26 @@ import (
 	"time"
 )
 
+// timeSpan stores the start and end timestamps of an event stage.
 type timeSpan struct {
 	start *time.Time
 	end   *time.Time
 }
 
+// Timing collects durations for named events and stages.
 type Timing struct {
 	eventOrder []string
 	events     map[string]map[string]*timeSpan
 }
 
+// NewTiming returns an empty timing collector.
 func NewTiming() *Timing {
 	return &Timing{
 		events: make(map[string]map[string]*timeSpan),
 	}
 }
 
+// Start marks the start time of an event stage.
 func (timing *Timing) Start(event string, stage string) error {
 	_, eventExists := timing.events[event]
 	stageStarted := false
@@ -51,6 +55,7 @@ func (timing *Timing) Start(event string, stage string) error {
 	return nil
 }
 
+// End marks the end time of an event stage.
 func (timing *Timing) End(event string, stage string) error {
 	_, eventExists := timing.events[event]
 	stageStarted := false
@@ -78,6 +83,7 @@ func (timing *Timing) End(event string, stage string) error {
 	return nil
 }
 
+// DurationOfStage returns the completed duration of an event stage.
 func (timing Timing) DurationOfStage(event string, stage string) (time.Duration, error) {
 	var zeroDuration time.Duration
 	_, eventExists := timing.events[event]
@@ -107,6 +113,7 @@ func (timing Timing) DurationOfStage(event string, stage string) (time.Duration,
 	return end.Sub(start), nil
 }
 
+// DurationOfEvent returns the combined duration of all completed stages of an event.
 func (timing Timing) DurationOfEvent(event string) (time.Duration, error) {
 	var zeroDuration time.Duration
 	_, eventExists := timing.events[event]
@@ -133,6 +140,7 @@ func (timing Timing) DurationOfEvent(event string) (time.Duration, error) {
 	return duration, nil
 }
 
+// ReprDurationOfStage returns a printable representation of a stage duration.
 func (timing Timing) ReprDurationOfStage(event string, stage string) (string, error) {
 	var zeroDuration time.Duration
 	duration, err := timing.DurationOfStage(event, stage)
@@ -144,6 +152,7 @@ func (timing Timing) ReprDurationOfStage(event string, stage string) (string, er
 	return fmt.Sprintf("%s: %v", event, duration), nil
 }
 
+// ReprDurationOfEvent returns a printable representation of an event duration.
 func (timing Timing) ReprDurationOfEvent(event string) (string, error) {
 	var zeroDuration time.Duration
 	duration, err := timing.DurationOfEvent(event)
@@ -155,6 +164,7 @@ func (timing Timing) ReprDurationOfEvent(event string) (string, error) {
 	return fmt.Sprintf("%s: %v", event, duration), nil
 }
 
+// ReprAvailableDurationsOfEvents returns printable durations for all completed events in insertion order.
 func (timing Timing) ReprAvailableDurationsOfEvents() (string, error) {
 	prefix := "⏳ Time spent:\n"
 	text := prefix

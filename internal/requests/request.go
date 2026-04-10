@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// Request describes an HTTP request template with retry and throttling settings.
 type Request struct {
 	cfg    *config.Config
 	client *http.Client
@@ -28,6 +29,7 @@ type Request struct {
 	InterruptRequestCallback func() bool
 }
 
+// NewRequest returns a request initialized with default configuration.
 func NewRequest(cfg *config.Config) *Request {
 	return &Request{
 		cfg:    cfg,
@@ -41,6 +43,7 @@ func NewRequest(cfg *config.Config) *Request {
 	}
 }
 
+// Do executes the request and applies retries, throttling, and interruption checks.
 func (r *Request) Do() *Response {
 	if r.InterruptRequestCallback != nil && r.InterruptRequestCallback() {
 		return &Response{
@@ -120,6 +123,7 @@ func (r *Request) Do() *Response {
 
 		delay := r.calculateRetryDelay(retryIdx)
 
+		// Split the backoff sleep into smaller chunks so shutdown can interrupt quickly.
 		for i := 0; i < 10 && delay > 0; i++ {
 			if r.InterruptRequestCallback != nil && r.InterruptRequestCallback() {
 				return &Response{
@@ -173,6 +177,7 @@ func (r *Request) Do() *Response {
 	}
 }
 
+// calculateRetryDelay returns the exponential backoff delay for a retry attempt.
 func (r *Request) calculateRetryDelay(retryIdx int) int {
 	if retryIdx == 0 {
 		return 0
@@ -189,6 +194,7 @@ func (r *Request) calculateRetryDelay(retryIdx int) int {
 	return int(delay * jitter)
 }
 
+// DeepCopy returns a copy of the request with independent mutable fields.
 func (r *Request) DeepCopy() *Request {
 	headers := make(map[string][]string)
 	queries := make(map[string][]string)

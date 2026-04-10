@@ -10,11 +10,13 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// Parser extracts links and activities from Moodle HTML pages.
 type Parser struct {
 	cfg *config.Config
 	req *requests.Request
 }
 
+// NewParser returns a parser configured for the current Moodle instance.
 func NewParser(cfg *config.Config, reqTemplate *requests.Request) *Parser {
 	return &Parser{
 		cfg: cfg,
@@ -22,10 +24,12 @@ func NewParser(cfg *config.Config, reqTemplate *requests.Request) *Parser {
 	}
 }
 
+// MakeDoc parses raw HTML into a goquery document.
 func (p *Parser) MakeDoc(html string) (*goquery.Document, error) {
 	return goquery.NewDocumentFromReader(strings.NewReader(html))
 }
 
+// ExtractSectionLinks returns unique canonical section links found on a course page.
 func (p *Parser) ExtractSectionLinks(doc *goquery.Document) []string {
 	seen := types.NewSet[string]()
 	links := make([]string, 0)
@@ -55,6 +59,7 @@ func (p *Parser) ExtractSectionLinks(doc *goquery.Document) []string {
 			return
 		}
 
+		// Normalize the query so equivalent links collapse to the same canonical URL.
 		canonicalQuery := url.Values{}
 		canonicalQuery.Set("id", id)
 		canonicalQuery.Set("section", section)
@@ -75,6 +80,7 @@ func (p *Parser) ExtractSectionLinks(doc *goquery.Document) []string {
 	return links
 }
 
+// ExtractActivities returns the deduplicated activities found on a page.
 func (p *Parser) ExtractActivities(doc *goquery.Document) types.Set[Activity] {
 	activities := types.NewSet[Activity]()
 
@@ -84,6 +90,7 @@ func (p *Parser) ExtractActivities(doc *goquery.Document) types.Set[Activity] {
 
 		modType := ""
 
+		// Moodle encodes the activity type in a CSS class with the modtype_ prefix.
 		for _, className := range classes {
 			if strings.HasPrefix(className, "modtype_") {
 				modType = strings.TrimPrefix(className, "modtype_")

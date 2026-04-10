@@ -43,7 +43,6 @@ var msgSender *messages.Sender
 var state *statepkg.State
 var parser *parsing.Parser
 var sessionManager *sessions.SessionManager
-var timing *timepkg.Timing
 
 var initialized = false
 var stopping atomic.Bool
@@ -87,10 +86,6 @@ func initialize() {
 
 	if sessionManager == nil {
 		sessionManager = sessions.NewSessionManager(stg)
-	}
-
-	if timing == nil {
-		timing = timepkg.NewTiming()
 	}
 
 	initialized = true
@@ -150,7 +145,9 @@ func main() {
 		fmt.Print(cfg.Sep)
 		fmt.Print("⚙️ Starting cycle\n\n")
 
+		timing := timepkg.NewTiming()
 		timing.Start(buildSnapshotsTimingEvent, buildSnapshotsTimingStage)
+
 		var snapshotCourseWg, snapshotSectionWg sync.WaitGroup
 		snapshotCh := make(chan pages.Snapshot, cfg.SnapshotChannelBufferSize)
 

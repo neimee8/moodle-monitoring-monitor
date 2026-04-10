@@ -5,6 +5,7 @@ import (
 	"monitor/internal/config"
 	"monitor/internal/requests"
 	"net/http"
+	"strconv"
 )
 
 var req *requests.Request
@@ -14,7 +15,7 @@ type Settings struct {
 	AdminTelegramChatIds               []string          `json:"admin_telegram_chat_ids"`
 	ActiveTelegramChatIds              []string          `json:"active_telegram_chat_ids"`
 	Courses                            map[string]string `json:"courses"`
-	MoodleSession                      string            `json:"moodle_session"`
+	MoodleSessions                     map[string]string `json:"moodle_sessions"`
 	MonitorRequestCycleCooldownSeconds uint              `json:"monitor_request_cycle_cooldown_seconds"`
 	TelegramApiToken                   string            `json:"telegram_api_token"`
 	WebsettingsLogLineCount            uint              `json:"websettings_log_line_count"`
@@ -42,7 +43,7 @@ func Load(cfg *config.Config) *Settings {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		panic("load settings error: bad response code: " + string(resp.StatusCode))
+		panic("load settings error: bad response code: " + strconv.Itoa(resp.StatusCode))
 	}
 
 	var r response

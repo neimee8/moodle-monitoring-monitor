@@ -1,11 +1,13 @@
 package state
 
-import "monitor/internal/types"
+import (
+	"monitor/internal/parsing"
+)
 
-type Storage map[string]types.Activities
+type Storage map[string]parsing.Activities
 
 func NewStorage() *Storage {
-	s := Storage(make(map[string]types.Activities))
+	s := Storage(make(map[string]parsing.Activities))
 	return &s
 }
 
@@ -14,10 +16,10 @@ func (s Storage) Exists(course string) bool {
 	return ok
 }
 
-func (s Storage) Set(course string, activities types.Activities) {
+func (s Storage) Set(course string, activities parsing.Activities) {
 	s[course] = activities
 }
 
-func (s Storage) Diff(course string, activities types.Activities) (types.Activities, types.Activities) {
+func (s Storage) Diff(course string, activities parsing.Activities) (parsing.Activities, parsing.Activities) {
 	return s[course].Diff(activities)
 }

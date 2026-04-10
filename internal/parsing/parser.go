@@ -30,11 +30,7 @@ func (p *Parser) ExtractSectionLinks(doc *goquery.Document) []string {
 	seen := types.NewSet[string]()
 	links := make([]string, 0)
 
-	doc.Find(`
-		h3.sectionname > a[href*="/course/view.php"][href*="section="],
-		.section-navigation .prevsection > a[href*="/course/view.php"][href*="section="],
-		.section-navigation .nextsection > a[href*="/course/view.php"][href*="section="]
-	`).Each(func(_ int, s *goquery.Selection) {
+	doc.Find(`h3.sectionname > a[href*="/course/view.php"][href*="section="]`).Each(func(_ int, s *goquery.Selection) {
 		href, ok := s.Attr("href")
 
 		if !ok || href == "" {
@@ -79,8 +75,8 @@ func (p *Parser) ExtractSectionLinks(doc *goquery.Document) []string {
 	return links
 }
 
-func (p *Parser) ExtractActivities(doc *goquery.Document) types.Set[types.Activity] {
-	activities := types.NewSet[types.Activity]()
+func (p *Parser) ExtractActivities(doc *goquery.Document) types.Set[Activity] {
+	activities := types.NewSet[Activity]()
 
 	doc.Find("li.activity-wrapper").Each(func(_ int, li *goquery.Selection) {
 		classAttr, _ := li.Attr("class")
@@ -114,7 +110,7 @@ func (p *Parser) ExtractActivities(doc *goquery.Document) types.Set[types.Activi
 			return
 		}
 
-		activities.Add(types.Activity{
+		activities.Add(Activity{
 			Id:    parsed.Query().Get("id"),
 			Type:  modType,
 			Title: title,

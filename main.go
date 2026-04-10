@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"monitor/internal/config"
 	"monitor/internal/messages"
 	"monitor/internal/pages"
 	"monitor/internal/parsing"
 	"monitor/internal/requests"
+	"monitor/internal/sessions"
 	"monitor/internal/settings"
 	statepkg "monitor/internal/state"
 	"monitor/internal/timepkg"
@@ -16,14 +18,16 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-const buildSnapshotsTimingKey = "snapshot building"
-const snapshotProcessingTimingKey = "snapshot processing"
+const buildSnapshotsTimingEvent = "snapshot building"
+const buildSnapshotsTimingStage = ""
+const snapshotProcessingTimingEvent = "snapshot processing"
 
 var cfg = config.Load()
 var stg *settings.Settings
@@ -32,11 +36,13 @@ var reqTemplate *requests.Request
 var msgSender *messages.Sender
 var state *statepkg.State
 var parser *parsing.Parser
+var sessionManager *sessions.SessionManager
 var timing *timepkg.Timing
 
 var initialized = false
 var stopping atomic.Bool
 var lastLoggedOutMsg = time.Date(1970, time.January, 0, 0, 0, 0, 0, time.Local)
+var lastTimedOutSessions = sessions.Sessions{}
 
 func initialize() {
 	interruptRequestCallback := func() bool {
@@ -50,10 +56,7 @@ func initialize() {
 	if reqTemplate == nil {
 		reqTemplate = requests.NewRequest(cfg)
 		reqTemplate.Headers = map[string][]string{
-			"User-Agent": []string{"Mozilla/5.0"},
-		}
-		reqTemplate.Cookies = map[string]string{
-			"MoodleSession": stg.MoodleSession,
+			"User-Agent": []string{cfg.MoodleUserAgentHeader},
 		}
 		reqTemplate.Retries = cfg.MoodleRequestRetries
 		reqTemplate.InterruptRequestCallback = interruptRequestCallback
@@ -75,6 +78,10 @@ func initialize() {
 		parser = parsing.NewParser(cfg, reqTemplate)
 	}
 
+	if sessionManager == nil {
+		sessionManager = sessions.NewSessionManager(stg)
+	}
+
 	if timing == nil {
 		timing = timepkg.NewTiming()
 	}
@@ -87,11 +94,11 @@ func main() {
 		fmt.Print(cfg.Sep)
 
 		if r := recover(); r != nil {
-			fmt.Printf("🕰️  [%s]\n❌ Panic: %s\n\n", time.Now().Local().Format(cfg.TimeFormat), r)
+			fmt.Printf("🕰️ [%s]\n❌ Panic: %s\n\n", time.Now().Local().Format(cfg.TimeFormat), r)
 			fmt.Println("🪜 Stack trace:")
 			fmt.Print(string(debug.Stack()))
 		} else {
-			fmt.Printf("🕰️  [%s]\n🛑 Stopped\n\n", time.Now().Local().Format(cfg.TimeFormat))
+			fmt.Printf("🕰️ [%s]\n🛑 Stopped\n\n", time.Now().Local().Format(cfg.TimeFormat))
 		}
 
 		if initialized {
@@ -99,7 +106,7 @@ func main() {
 
 			if err != nil {
 				fmt.Printf(
-					"🕰️  [%s]\n❌ %s\n\n",
+					"🕰️ [%s]\n❌ %s\n\n",
 					time.Now().Local().Format(cfg.TimeFormat),
 					utils.Capitalize(err.Error()),
 				)
@@ -110,7 +117,7 @@ func main() {
 	}()
 
 	fmt.Print(cfg.Sep)
-	fmt.Printf("🕰️  [%s]\n⚙️ Initializing...\n\n", time.Now().Local().Format(cfg.TimeFormat))
+	fmt.Printf("🕰️ [%s]\n⚙️ Initializing...\n\n", time.Now().Local().Format(cfg.TimeFormat))
 
 	initialize()
 
@@ -124,7 +131,7 @@ func main() {
 		exitOnTimerCh <- types.Void{}
 	}()
 
-	fmt.Printf("🕰️  [%s]\n✅ Initialized successfully!\n\n", time.Now().Local().Format(cfg.TimeFormat))
+	fmt.Printf("🕰️ [%s]\n✅ Initialized successfully!\n\n", time.Now().Local().Format(cfg.TimeFormat))
 	fmt.Print(cfg.Sep)
 
 	for true {
@@ -135,12 +142,14 @@ func main() {
 		fmt.Print(cfg.Sep)
 		fmt.Print("⚙️ Starting cycle\n\n")
 
-		timing.Start(buildSnapshotsTimingKey, "")
+		timing.Start(buildSnapshotsTimingEvent, buildSnapshotsTimingStage)
 		var snapshotCourseWg, snapshotSectionWg sync.WaitGroup
 		snapshotCh := make(chan pages.Snapshot, cfg.SnapshotChannelBufferSize)
 
 		for course, path := range stg.Courses {
 			err := pages.BuildSnapshots(
+				cfg,
+				sessionManager,
 				snapshotCh,
 				&snapshotCourseWg,
 				&snapshotSectionWg,
@@ -160,101 +169,108 @@ func main() {
 			snapshotCourseWg.Wait()
 			snapshotSectionWg.Wait()
 			close(snapshotCh)
-			timing.End(buildSnapshotsTimingKey, "")
+			timing.End(buildSnapshotsTimingEvent, buildSnapshotsTimingStage)
 		}()
 
 		fmt.Print(cfg.Sep)
 
-		courseActivitySetMap := make(map[string]types.Set[types.Activity])
+		courseActivitySetMap := make(map[string]types.Set[parsing.Activity])
 		sectionCounters := make(map[string]int)
 		errorCounters := make(map[string]int)
 		badStatusCounters := make(map[string]int)
-		i := 0
+		snapshotProcessingStage := -1
 
 		for snapshot := range snapshotCh {
 			if stopping.Load() {
 				return
 			}
 
-			timing.Start(snapshotProcessingTimingKey, string(i))
+			func() {
+				snapshotProcessingStage++
+				timing.Start(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
 
-			activitySet, ok := courseActivitySetMap[snapshot.Course]
+				defer func() {
+					timing.End(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
+					fmt.Print(cfg.Sep)
+				}()
 
-			if !ok {
-				activitySet = types.NewSet[types.Activity]()
-				courseActivitySetMap[snapshot.Course] = activitySet
-			}
+				activitySet, ok := courseActivitySetMap[snapshot.Course]
 
-			sectionCounters[snapshot.Course]++
-
-			fmt.Printf(cfg.Sep)
-			fmt.Printf("🕰️  [%s]\n", time.Now().Local().Format(cfg.TimeFormat))
-			fmt.Println("⚙️  Snapshot processing started")
-			fmt.Printf("⏱️  Snapshot building started at: %s\n", snapshot.TimeBuildingStarted.Format(cfg.TimeFormat))
-			fmt.Printf("🏫 Course: %s\n", snapshot.Course)
-			fmt.Printf("📦 Snapshot type: %s\n", snapshot.Type)
-			fmt.Printf("📍 Url: %s\n", snapshot.Url)
-			fmt.Printf("🔄 Retries: %d\n\n", snapshot.Retries)
-
-			if snapshot.Err == nil {
-				fmt.Println("✅ No error")
-			} else {
-				errorCounters[snapshot.Course]++
-				text := fmt.Sprintf("❌ Error: %v", snapshot.Err)
-
-				fmt.Print(text + "\n\n")
-				fmt.Print(cfg.Sep)
-
-				if snapshot.Type == pages.CourseSnapshot {
-					msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
+				if !ok {
+					activitySet = types.NewSet[parsing.Activity]()
+					courseActivitySetMap[snapshot.Course] = activitySet
 				}
 
-				timing.End(snapshotProcessingTimingKey, string(i))
-				continue
-			}
+				sectionCounters[snapshot.Course]++
 
-			if snapshot.StatusCode == http.StatusOK {
-				fmt.Println("✅ Status ok")
-			} else {
-				badStatusCounters[snapshot.Course]++
-				text := fmt.Sprintf("❌ Bad response status: %d", snapshot.StatusCode)
-
-				fmt.Print(text + "\n\n")
 				fmt.Print(cfg.Sep)
+				fmt.Printf("🕰️ [%s]\n", time.Now().Local().Format(cfg.TimeFormat))
+				fmt.Println("⚙️ Snapshot processing started")
+				fmt.Printf("🕰️ Snapshot building started at: %s\n", snapshot.TimeBuildingStarted.Format(cfg.TimeFormat))
+				fmt.Printf("⏳ Time spent on request: %v\n", snapshot.RequestDuration)
+				fmt.Printf("⏳ Time spent on building: %v\n", snapshot.BuildingDuration)
+				fmt.Printf("🏫 Course: %s\n", snapshot.Course)
+				fmt.Printf("📦 Snapshot type: %s\n", snapshot.Type)
+				fmt.Printf("📍 Url: %s\n", snapshot.Url)
+				fmt.Printf("🔄 Retries: %d\n", snapshot.Retries)
+				fmt.Printf("⚠️ Timed out sessions: %d\n\n", snapshot.TimedOutSessions)
 
-				if snapshot.Type == pages.CourseSnapshot {
-					msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
+				if snapshot.Retries > 0 {
+					msgSender.Do(fmt.Sprintf("🔄 Request to %s retried %d times!", snapshot.Url, snapshot.Retries), true)
 				}
 
-				timing.End(snapshotProcessingTimingKey, string(i))
-				continue
-			}
+				if snapshot.Err == nil {
+					fmt.Println("✅ No error")
+				} else if errors.Is(snapshot.Err, sessions.NoValidSessionsError) {
+					msgSender.Do("‼️ No valid sessions.", true)
+					panic(snapshot.Err)
+				} else {
+					errorCounters[snapshot.Course]++
+					text := fmt.Sprintf("❌ Error: %v", snapshot.Err)
 
-			if snapshot.LoggedIn {
-				fmt.Print("✅ Logged in\n\n")
-			} else {
-				text := "❌ Logged out"
+					fmt.Print(text + "\n\n")
 
-				fmt.Print(text + "\n\n")
-				fmt.Print(cfg.Sep)
+					if snapshot.Type == pages.CourseSnapshot {
+						msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
+					}
 
-				if snapshot.Type == pages.CourseSnapshot &&
-					time.Since(lastLoggedOutMsg) > time.Duration(cfg.LoggedOutMsgCooldownSeconds)*time.Second {
-
-					msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
-					lastLoggedOutMsg = time.Now().Local()
+					return
 				}
 
-				timing.End(snapshotProcessingTimingKey, string(i))
-				continue
-			}
+				if snapshot.StatusCode == http.StatusOK {
+					fmt.Println("✅ Status ok")
+				} else {
+					badStatusCounters[snapshot.Course]++
+					text := fmt.Sprintf("❌ Bad response status: %d", snapshot.StatusCode)
 
-			activitySet.Merge(parser.ExtractActivities(snapshot.Doc))
+					fmt.Print(text + "\n\n")
 
-			fmt.Print(cfg.Sep)
-			timing.End(snapshotProcessingTimingKey, string(i))
+					if snapshot.Type == pages.CourseSnapshot {
+						msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
+					}
 
-			i++
+					return
+				}
+
+				if snapshot.LoggedIn {
+					fmt.Print("✅ Logged in\n\n")
+				} else {
+					text := "❌ Logged out"
+
+					fmt.Print(text + "\n\n")
+
+					if snapshot.Type == pages.CourseSnapshot &&
+						time.Since(lastLoggedOutMsg) > time.Duration(cfg.LoggedOutMsgCooldownSeconds)*time.Second {
+
+						msgSender.Do(fmt.Sprintf("%s [%s]", text, snapshot.Course), true)
+						lastLoggedOutMsg = time.Now().Local()
+					}
+
+					return
+				}
+
+				activitySet.Merge(parser.ExtractActivities(snapshot.Doc))
+			}()
 		}
 
 		fmt.Print(cfg.Sep)
@@ -270,80 +286,100 @@ func main() {
 		fmt.Printf("📍 Pages visited: %d\n\n", pagesVisited)
 
 		for course, _ := range stg.Courses {
-			fmt.Print(cfg.Sep)
-
-			timing.End(snapshotProcessingTimingKey, string(i))
-			sectionCounter := sectionCounters[course]
-			errorCounter := errorCounters[course]
-			badStatusCounter := badStatusCounters[course]
-
-			fmt.Printf("🏫 Course: %s\n", course)
-			fmt.Printf("⤵️  Sections: %d\n", sectionCounter)
-
-			if errorCounter == 0 {
-				fmt.Println("✅ No errors on course")
-			} else {
-				fmt.Printf("❌ Errors: %d\n", errorCounter)
-			}
-
-			if badStatusCounter == 0 {
-				fmt.Print("✅ No bad response statuses on course\n\n")
-			} else {
-				fmt.Printf("❌ Bad response statuses: %d\n\n", badStatusCounter)
-			}
-
-			activitySet := courseActivitySetMap[course]
-
-			if activitySet.Size() == 0 {
-				fmt.Print("⚠️ Activities have not been extracted\n\n")
+			func() {
 				fmt.Print(cfg.Sep)
-				continue
-			}
 
-			if !state.Storage.Exists(course) {
-				fmt.Print("🧠 New course content remembered\n\n")
-				fmt.Print(cfg.Sep)
-				continue
-			}
+				activities := parsing.Activities{}
 
-			activities := types.Activities(activitySet.ToSlice())
-			added, removed := state.Storage.Diff(course, activities)
+				snapshotProcessingStage++
+				timing.Start(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
 
-			if len(added) == 0 && len(removed) == 0 {
-				fmt.Print("✅ Nothing new\n\n")
-				fmt.Print(cfg.Sep)
-				continue
-			}
+				defer func() {
+					timing.End(snapshotProcessingTimingEvent, strconv.Itoa(snapshotProcessingStage))
+					fmt.Print(cfg.Sep)
 
-			fmt.Print("🚨 Changes\n\n")
-			text := fmt.Sprintf("🚨 Changes in %s\n\n", course)
+					if len(activities) > 0 {
+						state.Storage.Set(course, activities)
+					}
+				}()
 
-			if len(added) > 0 {
-				fmt.Println(fmt.Sprintf("🆕 Added:\n\n%s", added.Repr()))
-				text += fmt.Sprintf("🆕 Added:\n\n%s\n", added.ReprHtml())
-			}
+				sectionCounter := sectionCounters[course]
+				errorCounter := errorCounters[course]
+				badStatusCounter := badStatusCounters[course]
 
-			if len(removed) > 0 {
-				fmt.Println(fmt.Sprintf("🗑️ Removed:\n\n%s", removed.Repr()))
-				text += fmt.Sprintf("🗑️ Removed:\n\n%s\n", removed.ReprHtml())
-			}
+				fmt.Printf("🏫 Course: %s\n", course)
+				fmt.Printf("⤵️ Sections: %d\n", sectionCounter)
 
-			msgSender.Do(text, false)
-			state.Storage.Set(course, activities)
+				if errorCounter == 0 {
+					fmt.Println("✅ No errors on course")
+				} else {
+					fmt.Printf("❌ Errors: %d\n", errorCounter)
+				}
 
-			fmt.Print(cfg.Sep)
-			timing.End(snapshotProcessingTimingKey, string(i))
+				if badStatusCounter == 0 {
+					fmt.Print("✅ No bad response statuses on course\n\n")
+				} else {
+					fmt.Printf("❌ Bad response statuses: %d\n\n", badStatusCounter)
+				}
 
-			i++
+				activitySet := courseActivitySetMap[course]
+
+				if activitySet.Size() == 0 {
+					fmt.Print("⚠️ Activities have not been extracted\n\n")
+					return
+				}
+
+				activities = parsing.Activities(activitySet.ToSlice())
+
+				if !state.Storage.Exists(course) {
+					fmt.Print("🧠 New course content remembered\n\n")
+					return
+				}
+
+				addedActivities, removedActivities := state.Storage.Diff(course, activities)
+
+				if len(addedActivities) == 0 && len(removedActivities) == 0 {
+					fmt.Print("✅ Nothing new\n\n")
+					return
+				}
+
+				fmt.Print("🚨 Changes\n\n")
+				text := fmt.Sprintf("🚨 Changes in %s\n\n", course)
+
+				if len(addedActivities) > 0 {
+					fmt.Println(fmt.Sprintf("🆕 Added:\n\n%s", addedActivities.Repr()))
+					text += fmt.Sprintf("🆕 Added:\n\n%s\n", addedActivities.ReprHtml())
+				}
+
+				if len(removedActivities) > 0 {
+					fmt.Println(fmt.Sprintf("🗑️ Removed:\n\n%s", removedActivities.Repr()))
+					text += fmt.Sprintf("🗑️ Removed:\n\n%s\n", removedActivities.ReprHtml())
+				}
+
+				msgSender.Do(text, false)
+			}()
+		}
+
+		fmt.Print(cfg.Sep)
+
+		allTimedOutSessions := sessionManager.GetTimedOutSessions()
+		newTimedOutSessions, _ := lastTimedOutSessions.Diff(allTimedOutSessions)
+
+		if len(newTimedOutSessions) > 0 {
+			msgSender.Do(fmt.Sprintf("⚠️ New timed out sessions:\n%s", newTimedOutSessions.Repr()), true)
+		}
+
+		if len(allTimedOutSessions) > 0 {
+			fmt.Printf("⚠️ Timed out sessions:\n\n%s", allTimedOutSessions.Repr())
+			lastTimedOutSessions = allTimedOutSessions
 		}
 
 		durationRepr, err := timing.ReprAvailableDurationsOfEvents()
 
 		if err != nil {
-			panic("error on timing duration represent: " + err.Error())
+			panic("error on timing duration representation: " + err.Error())
 		}
 
-		fmt.Print(cfg.Sep)
 		fmt.Printf("%s\n", durationRepr)
 		fmt.Print(cfg.Sep)
 		fmt.Print(cfg.Sep)

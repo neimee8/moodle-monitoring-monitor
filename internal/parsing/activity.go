@@ -1,7 +1,8 @@
-package types
+package parsing
 
 import (
 	"fmt"
+	"monitor/internal/utils"
 	"strings"
 )
 
@@ -54,24 +55,6 @@ func (a Activities) ReprHtml() string {
 	return repr
 }
 
-func (a Activities) Diff(b Activities) (Activities, Activities) {
-	aSet := NewSet([]Activity(a)...)
-	bSet := NewSet([]Activity(b)...)
-
-	added := make(Activities, 0, len(b))
-	removed := make(Activities, 0, len(a))
-
-	for _, aEl := range a {
-		if !bSet.Exists(aEl) {
-			removed = append(removed, aEl)
-		}
-	}
-
-	for _, bEl := range b {
-		if !aSet.Exists(bEl) {
-			added = append(added, bEl)
-		}
-	}
-
-	return added, removed
+func (a Activities) Diff(b Activities) (added, removed Activities) {
+	return utils.SliceDiffComparable(a, b)
 }

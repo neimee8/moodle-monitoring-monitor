@@ -216,7 +216,7 @@ func (r *Request) DeepCopy() *Request {
 
 	return &Request{
 		cfg:    r.cfg,
-		client: r.client,
+		client: &http.Client{},
 
 		Url:            r.Url,
 		Method:         r.Method,

@@ -24,8 +24,10 @@ type Config struct {
 
 	LoggedOutMsgCooldownSeconds int
 
-	ApiResponseMsgOk string
-	Sep              string
+	ApiResponseMsgOk        string
+	MoodleSessionCookieName string
+	MoodleUserAgentHeader   string
+	Sep                     string
 
 	TimeFormat string
 	FilePerm   os.FileMode
@@ -59,8 +61,10 @@ func Load() *Config {
 
 		LoggedOutMsgCooldownSeconds: 150,
 
-		ApiResponseMsgOk: "ok",
-		Sep:              "--------------------------------\n\n",
+		ApiResponseMsgOk:        "ok",
+		MoodleSessionCookieName: "MoodleSession",
+		MoodleUserAgentHeader:   "Mozilla/5.0",
+		Sep:                     "--------------------------------\n\n",
 
 		TimeFormat: "02-01-2006 15:04:05.000",
 		FilePerm:   0644,
